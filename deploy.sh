@@ -52,7 +52,7 @@ for i in {1..30}; do
     warn "Ожидание освобождения lock ($i/30)..."
     sleep 2
 done
-apt-get install -y -qq wget ufw curl 2>&1 | grep -v "^WARNING" || true
+apt-get install -y -qq wget ufw curl git 2>&1 | grep -v "^WARNING" || true
 log "Системные зависимости установлены"
 
 # ── Install mtg from release ───────────────────────────────────
@@ -69,7 +69,7 @@ if ! command -v mtg >/dev/null 2>&1; then
         # Fallback: clone and build
         warn "Релиз не найден, компилируем из исходников..."
         info "Установка Go..."
-        GO_VER="1.23.4"
+        GO_VER="1.26.1"
         wget -q "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" -O /tmp/go.tar.gz || err "Не удалось скачать Go"
         rm -rf /usr/local/go
         tar -C /usr/local -xzf /tmp/go.tar.gz
@@ -79,11 +79,21 @@ if ! command -v mtg >/dev/null 2>&1; then
         mkdir -p $GOPATH/bin
         
         info "Компиляция mtg (может занять 2-3 минуты)..."
-        apt-get install -y -qq git
         cd /tmp && rm -rf mtg
         git clone --depth 1 https://github.com/9seconds/mtg.git || err "Не удалось клонировать"
         cd mtg
-        go build -o /usr/local/bin/mtg ./cmd/mtg || err "Ошибка компиляции"
+        
+        # Найти main.go
+        MTG_MAIN=$(find . -name "main.go" -type f 2>/dev/null | head -1)
+        if [[ -n "$MTG_MAIN" ]]; then
+            MTG_DIR=$(dirname "$MTG_MAIN")
+            info "Найден main.go в: $MTG_DIR"
+            go build -o /usr/local/bin/mtg "$MTG_DIR" || err "Ошибка компиляции"
+        else
+            # Попробуем стандартный путь
+            go build -o /usr/local/bin/mtg . || err "Ошибка компиляции"
+        fi
+        
         cd / && rm -rf /tmp/mtg
         chmod +x /usr/local/bin/mtg
         log "mtg скомпилирован"
