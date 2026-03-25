@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
 #  MTProto Proxy — One Command Deploy
-#  Usage: curl -s https://raw.githubusercontent.com/prokazzzzza/mtg-proxy-simple/main/deploy.sh | bash
+#  Usage: curl -s https://raw.githubusercontent.com/prokazzzzza/mtg-proxy-Telegram/main/deploy.sh | bash
 #  Tested on: Ubuntu 22.04 LTS, Debian 11+
 # ═══════════════════════════════════════════════════════════════════
 
