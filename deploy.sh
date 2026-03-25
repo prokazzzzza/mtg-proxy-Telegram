@@ -4,7 +4,6 @@
 #  Usage: curl -s https://raw.githubusercontent.com/prokazzzzza/mtg-proxy-simple/main/deploy.sh | bash
 #  Tested on: Ubuntu 22.04 LTS, Debian 11+
 # ═══════════════════════════════════════════════════════════════════
-set -e
 
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -44,7 +43,7 @@ echo -e "${GREEN}✓${NC} IP сервера: ${PROXY_IP}"
 # ── Install system deps ─────────────────────────────────────────
 echo "📦 Установка системных зависимостей..."
 apt-get update -qq
-apt-get install -y -qq wget ufw curl >/dev/null 2>&1
+apt-get install -y -qq wget ufw curl git >/dev/null 2>&1
 echo -e "${GREEN}✓${NC} Системные зависимости установлены"
 
 # ── Install Go ──────────────────────────────────────────────────
@@ -70,11 +69,29 @@ echo -e "${GREEN}✓${NC} Go $(go version 2>/dev/null | grep -oP 'go[0-9]+\.[0-9
 
 # ── Install mtg ──────────────────────────────────────────────────
 if ! command -v mtg &>/dev/null; then
-    echo "📦 Компиляция mtg из исходников..."
-    GOPATH=/root/go go install github.com/9seconds/mtg/v2/cmd/mtg@latest >/dev/null 2>&1
-    cp /root/go/bin/mtg /usr/local/bin/mtg
-    chmod +x /usr/local/bin/mtg
+    echo "📦 Компиляция mtg из исходников (это может занять 2-3 минуты)..."
+    
+    # Создаём директорию для GOPATH
+    mkdir -p /root/go/bin
+    
+    # Компилируем mtg с выводом прогресса
+    echo "   -> Скачивание и компиляция..."
+    GOPATH=/root/go go install github.com/9seconds/mtg/v2/cmd/mtg@latest 2>&1
+    
+    # Проверяем результат
+    if [[ -f /root/go/bin/mtg ]]; then
+        cp /root/go/bin/mtg /usr/local/bin/mtg
+        chmod +x /usr/local/bin/mtg
+        echo -e "${GREEN}✓${NC} mtg успешно скомпилирован"
+    else
+        echo -e "${RED}❌ Ошибка компиляции mtg${NC}"
+        echo "Попробуйте вручную: GOPATH=/root/go go install github.com/9seconds/mtg/v2/cmd/mtg@latest"
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✓${NC} mtg уже установлен"
 fi
+
 MTG_VER=$(mtg --version 2>/dev/null | head -1 || echo "installed")
 echo -e "${GREEN}✓${NC} mtg ${MTG_VER}"
 
@@ -120,13 +137,13 @@ echo -e "${GREEN}✓${NC} Firewall: порты 22, 443 открыты"
 # ── Start service ───────────────────────────────────────────────
 echo "🚀 Запуск MTProto Proxy..."
 systemctl daemon-reload
-systemctl enable --now mtg-proxy >/dev/null 2>&1
+systemctl enable --now mtg-proxy 2>&1
 
 sleep 2
 if systemctl is-active mtg-proxy; then
     echo -e "${GREEN}✓${NC} MTProto Proxy запущен и работает"
 else
-    echo -e "${YELLOW}⚠️  Сервис создан, но неактивен. Проверьте: journalctl -u mtg-proxy${NC}"
+    echo -e "${YELLOW}⚠️  Сервис создан, но неактивен. Проверьте: journalctl -u mtg-proxy -n 50${NC}"
 fi
 
 # ── Output ───────────────────────────────────────────────────────
@@ -150,5 +167,5 @@ echo ""
 echo "📋 Команды управления:"
 echo "   sudo systemctl status mtg-proxy   — статус"
 echo "   sudo systemctl restart mtg-proxy — перезапуск"
-echo "   sudo journalctl -u mtg-proxy -f   — логи"
+echo "   sudo journalctl -u mtg-proxy -f  — логи"
 echo ""
