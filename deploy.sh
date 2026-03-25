@@ -59,7 +59,18 @@ log "Системные зависимости установлены"
 MTG_VERSION="2.2.4"
 MTG_URL="https://github.com/9seconds/mtg/releases/download/v${MTG_VERSION}/mtg-linux-amd64"
 
-if ! command -v mtg >/dev/null 2>&1; then
+# Проверяем mtg
+MTG_INSTALLED=false
+if command -v mtg >/dev/null 2>&1; then
+    MTG_INSTALLED=true
+elif [[ -f /usr/local/bin/mtg ]]; then
+    chmod +x /usr/local/bin/mtg
+    if /usr/local/bin/mtg --version >/dev/null 2>&1; then
+        MTG_INSTALLED=true
+    fi
+fi
+
+if [[ "$MTG_INSTALLED" != "true" ]]; then
     info "Скачивание mtg v${MTG_VERSION}..."
     
     if wget -q "${MTG_URL}" -O /usr/local/bin/mtg 2>/dev/null; then
@@ -90,7 +101,6 @@ if ! command -v mtg >/dev/null 2>&1; then
             info "Найден main.go в: $MTG_DIR"
             go build -o /usr/local/bin/mtg "$MTG_DIR" || err "Ошибка компиляции"
         else
-            # Попробуем стандартный путь
             go build -o /usr/local/bin/mtg . || err "Ошибка компиляции"
         fi
         
@@ -102,11 +112,14 @@ else
     log "mtg уже установлен"
 fi
 
+# Всегда проверяем права
+chmod +x /usr/local/bin/mtg 2>/dev/null || true
+
 log "mtg $(mtg --version 2>/dev/null | head -1)"
 
 # ── Generate secret ──────────────────────────────────────────────
 info "Генерация секрета..."
-PROXY_SECRET=$(/usr/local/bin/mtg generate-secret --hex ya.ru) || err "Ошибка генерации"
+PROXY_SECRET=$(mtg generate-secret --hex ya.ru) || err "Ошибка генерации"
 [[ "$PROXY_SECRET" =~ ^ee[0-9a-f]{40,}$ ]] || err "Неверный формат секрета"
 log "Секрет сгенерирован"
 
