@@ -45,69 +45,49 @@ log "IP сервера: ${PROXY_IP}"
 
 # ── Install system deps ─────────────────────────────────────────
 info "Установка системных зависимостей..."
-while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-    warn "Ожидание освобождения lock..."
-    sleep 5
+for i in {1..30}; do
+    if apt-get update -qq 2>/dev/null; then
+        break
+    fi
+    warn "Ожидание освобождения lock ($i/30)..."
+    sleep 2
 done
-apt-get update -qq || true
 apt-get install -y -qq wget ufw curl 2>&1 | grep -v "^WARNING" || true
 log "Системные зависимости установлены"
 
-# ── Install Go ──────────────────────────────────────────────────
-GO_VER="1.23.4"
-GO_INSTALLED=false
+# ── Install mtg from release ───────────────────────────────────
+MTG_VERSION="2.2.4"
+MTG_URL="https://github.com/9seconds/mtg/releases/download/v${MTG_VERSION}/mtg-linux-amd64"
 
-if command -v go >/dev/null 2>&1; then
-    CURRENT_GO=$(go version 2>/dev/null | grep -oP 'go\K[0-9]+\.[0-9]+' | head -1)
-    if [[ -n "$CURRENT_GO" ]] && [[ $(echo -e "$CURRENT_GO\n1.23" | sort -V | head -1) == "1.23" ]]; then
-        GO_INSTALLED=true
-    fi
-fi
-
-if [[ "$GO_INSTALLED" != "true" ]]; then
-    info "Установка Go ${GO_VER}..."
-    wget -q "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" -O /tmp/go.tar.gz || err "Не удалось скачать Go"
-    rm -rf /usr/local/go
-    tar -C /usr/local -xzf /tmp/go.tar.gz || err "Не удалось распаковать Go"
-    echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
-    rm /tmp/go.tar.gz
-    log "Go ${GO_VER} установлен"
-fi
-
-export PATH=$PATH:/usr/local/go/bin
-GOPATH=/root/go
-export GOPATH
-mkdir -p $GOPATH/bin
-export PATH=$PATH:$GOPATH/bin:/usr/local/go/bin
-
-log "Go $(go version 2>/dev/null | grep -oP 'go[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-
-# ── Install mtg ──────────────────────────────────────────────────
 if ! command -v mtg >/dev/null 2>&1; then
-    info "Компиляция mtg (2-3 минуты)..."
+    info "Скачивание mtg v${MTG_VERSION}..."
     
-    # Пробуем старый способ
-    go install github.com/9seconds/mtg@latest 2>/dev/null && {
-        if [[ -f $GOPATH/bin/mtg ]]; then
-            cp $GOPATH/bin/mtg /usr/local/bin/mtg
-            chmod +x /usr/local/bin/mtg
-            log "mtg установлен"
-        fi
-    } || {
-        # Если не получилось, пробуем через git clone
-        warn "Прямая установка не удалась, пробуем через git..."
-        apt-get install -y -qq git 2>/dev/null || true
-        
-        cd /tmp
-        rm -rf mtg
-        git clone --depth 1 https://github.com/9seconds/mtg.git 2>/dev/null || err "Не удалось клонировать mtg"
-        cd mtg
-        go build -o /usr/local/bin/mtg ./cmd/mtg || err "Ошибка компиляции mtg"
+    if wget -q "${MTG_URL}" -O /usr/local/bin/mtg 2>/dev/null; then
         chmod +x /usr/local/bin/mtg
-        cd /
-        rm -rf /tmp/mtg
-        log "mtg скомпилирован из исходников"
-    }
+        log "mtg v${MTG_VERSION} скачан"
+    else
+        # Fallback: clone and build
+        warn "Релиз не найден, компилируем из исходников..."
+        info "Установка Go..."
+        GO_VER="1.23.4"
+        wget -q "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" -O /tmp/go.tar.gz || err "Не удалось скачать Go"
+        rm -rf /usr/local/go
+        tar -C /usr/local -xzf /tmp/go.tar.gz
+        rm /tmp/go.tar.gz
+        export PATH=$PATH:/usr/local/go/bin
+        export GOPATH=/root/go
+        mkdir -p $GOPATH/bin
+        
+        info "Компиляция mtg (может занять 2-3 минуты)..."
+        apt-get install -y -qq git
+        cd /tmp && rm -rf mtg
+        git clone --depth 1 https://github.com/9seconds/mtg.git || err "Не удалось клонировать"
+        cd mtg
+        go build -o /usr/local/bin/mtg ./cmd/mtg || err "Ошибка компиляции"
+        cd / && rm -rf /tmp/mtg
+        chmod +x /usr/local/bin/mtg
+        log "mtg скомпилирован"
+    fi
 else
     log "mtg уже установлен"
 fi
