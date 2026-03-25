@@ -9,7 +9,7 @@
 ## 🚀 Быстрый старт
 
 ```bash
-curl -s https://raw.githubusercontent.com/prokazzzzza/mtg-proxy-simple/main/deploy.sh | bash
+curl -s https://raw.githubusercontent.com/prokazzzzza/mtg-proxy-Telegram/main/deploy.sh | bash
 ```
 
 После выполнения вы получите готовую ссылку для добавления прокси в Telegram.
