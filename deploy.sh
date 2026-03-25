@@ -6,7 +6,7 @@
 #  Tested on: Ubuntu 22.04 LTS, Debian 11+
 # ═══════════════════════════════════════════════════════════════════
 
-set -u  # Останавливать на неопределённых переменных
+set -u
 
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -45,17 +45,21 @@ log "IP сервера: ${PROXY_IP}"
 
 # ── Install system deps ─────────────────────────────────────────
 info "Установка системных зависимостей..."
-apt-get update -qq || warn "apt-get update не удался"
-apt-get install -y -qq wget ufw curl git 2>&1 | grep -v "^WARNING" || true
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+    warn "Ожидание освобождения lock..."
+    sleep 5
+done
+apt-get update -qq || true
+apt-get install -y -qq wget ufw curl 2>&1 | grep -v "^WARNING" || true
 log "Системные зависимости установлены"
 
 # ── Install Go ──────────────────────────────────────────────────
-GO_VER="1.22.5"
+GO_VER="1.23.4"
 GO_INSTALLED=false
 
 if command -v go >/dev/null 2>&1; then
     CURRENT_GO=$(go version 2>/dev/null | grep -oP 'go\K[0-9]+\.[0-9]+' | head -1)
-    if [[ -n "$CURRENT_GO" ]] && [[ $(echo -e "$CURRENT_GO\n1.22" | sort -V | head -1) == "1.22" ]]; then
+    if [[ -n "$CURRENT_GO" ]] && [[ $(echo -e "$CURRENT_GO\n1.23" | sort -V | head -1) == "1.23" ]]; then
         GO_INSTALLED=true
     fi
 fi
@@ -67,26 +71,43 @@ if [[ "$GO_INSTALLED" != "true" ]]; then
     tar -C /usr/local -xzf /tmp/go.tar.gz || err "Не удалось распаковать Go"
     echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
     rm /tmp/go.tar.gz
+    log "Go ${GO_VER} установлен"
 fi
 
 export PATH=$PATH:/usr/local/go/bin
+GOPATH=/root/go
+export GOPATH
+mkdir -p $GOPATH/bin
+export PATH=$PATH:$GOPATH/bin:/usr/local/go/bin
+
 log "Go $(go version 2>/dev/null | grep -oP 'go[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 
 # ── Install mtg ──────────────────────────────────────────────────
 if ! command -v mtg >/dev/null 2>&1; then
     info "Компиляция mtg (2-3 минуты)..."
     
-    mkdir -p /root/go/bin
-    
-    GOPATH=/root/go go install github.com/9seconds/mtg/v2/cmd/mtg@latest || err "Ошибка компиляции mtg"
-    
-    if [[ -f /root/go/bin/mtg ]]; then
-        cp /root/go/bin/mtg /usr/local/bin/mtg
+    # Пробуем старый способ
+    go install github.com/9seconds/mtg@latest 2>/dev/null && {
+        if [[ -f $GOPATH/bin/mtg ]]; then
+            cp $GOPATH/bin/mtg /usr/local/bin/mtg
+            chmod +x /usr/local/bin/mtg
+            log "mtg установлен"
+        fi
+    } || {
+        # Если не получилось, пробуем через git clone
+        warn "Прямая установка не удалась, пробуем через git..."
+        apt-get install -y -qq git 2>/dev/null || true
+        
+        cd /tmp
+        rm -rf mtg
+        git clone --depth 1 https://github.com/9seconds/mtg.git 2>/dev/null || err "Не удалось клонировать mtg"
+        cd mtg
+        go build -o /usr/local/bin/mtg ./cmd/mtg || err "Ошибка компиляции mtg"
         chmod +x /usr/local/bin/mtg
-        log "mtg скомпилирован"
-    else
-        err "mtg не найден после компиляции"
-    fi
+        cd /
+        rm -rf /tmp/mtg
+        log "mtg скомпилирован из исходников"
+    }
 else
     log "mtg уже установлен"
 fi
